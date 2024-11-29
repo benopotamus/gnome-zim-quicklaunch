@@ -1,0 +1,6 @@
+{
+    "eslint.options": {
+        "configFile": "../eslintrc.config.js"
+    },
+    "eslint.enable": true
+}

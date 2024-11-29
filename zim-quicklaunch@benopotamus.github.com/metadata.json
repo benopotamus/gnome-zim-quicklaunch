@@ -1,0 +1,8 @@
+{
+    "uuid": "zim-quicklaunch@benopotamus.github.com",
+    "name": "Zim Quick Launch",
+    "description": "Quick access to Zim notebooks from the top bar",
+    "shell-version": ["47"],
+    "url": "https://github.com/benopotamus/gnome-zim-quicklaunch",
+    "version-name": "1.0"
+}
