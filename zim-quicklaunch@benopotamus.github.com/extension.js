@@ -30,10 +30,11 @@ const ZimNotebooksIndicator = GObject.registerClass(
 
 			// Set up file monitoring
 			this._notebooksMonitor = null;
+			this._notebooksMonitorId = null;
 			let file = Gio.File.new_for_path(NOTEBOOKS_LIST_FILE);
 			try {
 				this._notebooksMonitor = file.monitor(Gio.FileMonitorFlags.NONE, null);
-				this._notebooksMonitor.connect('changed', () => {
+				this._notebooksMonitorId = this._notebooksMonitor.connect('changed', () => {
 					this._loadNotebooks();
 				});
 			} catch (e) {
@@ -48,54 +49,57 @@ const ZimNotebooksIndicator = GObject.registerClass(
 			// Clear existing menu items
 			this.menu.removeAll();
 
-			try {
-				let [success, contents] = GLib.file_get_contents(NOTEBOOKS_LIST_FILE);
-				if (success) {
-					let lines = new TextDecoder().decode(contents).split('\n');
-					let hasNotebooks = false;
+			let file = Gio.File.new_for_path(NOTEBOOKS_LIST_FILE);
+			file.load_contents_async(null, (source, result) => {
+				try {
+					let [success, contents] = source.load_contents_finish(result);
+					if (success) {
+						let lines = new TextDecoder().decode(contents).split('\n');
+						let hasNotebooks = false;
 
-					// Helper to process blocks
-					let currentBlock = null;
+						// Helper to process blocks
+						let currentBlock = null;
 
-					lines.forEach(line => {
-						line = line.trim();
-				
-						// Ignore empty lines and comments
-						if (line === '' || line.startsWith('#')) return;
-				
-						// Detect start of a block
-						if (line.startsWith('[') && line.endsWith(']')) {
-							if (currentBlock) {
-								this._processNotebookBlock(currentBlock, () => hasNotebooks = true);
+						lines.forEach(line => {
+							line = line.trim();
+					
+							// Ignore empty lines and comments
+							if (line === '' || line.startsWith('#')) return;
+					
+							// Detect start of a block
+							if (line.startsWith('[') && line.endsWith(']')) {
+								if (currentBlock) {
+									this._processNotebookBlock(currentBlock, () => hasNotebooks = true);
+								}
+								currentBlock = {};
+							} else if (currentBlock) {
+								// Parse key=value pairs
+								let [key, value] = line.split('=').map(part => part.trim());
+								if (key && value) {
+									currentBlock[key] = value;
+								}
 							}
-							currentBlock = {};
-						} else if (currentBlock) {
-							// Parse key=value pairs
-							let [key, value] = line.split('=').map(part => part.trim());
-							if (key && value) {
-								currentBlock[key] = value;
-							}
-						}
-					});
-				
-					// Process the last block if any
-					if (currentBlock) {
-						this._processNotebookBlock(currentBlock, () => hasNotebooks = true);
-					}
-
-					if (!hasNotebooks) {
-						let noNotebooksItem = new PopupMenu.PopupMenuItem('No notebooks found', { 
-							reactive: false,
-							style_class: 'popup-inactive-menu-item'
 						});
-						this.menu.addMenuItem(noNotebooksItem);
+					
+						// Process the last block if any
+						if (currentBlock) {
+							this._processNotebookBlock(currentBlock, () => hasNotebooks = true);
+						}
+
+						if (!hasNotebooks) {
+							let noNotebooksItem = new PopupMenu.PopupMenuItem('No notebooks found', { 
+								reactive: false,
+								style_class: 'popup-inactive-menu-item'
+							});
+							this.menu.addMenuItem(noNotebooksItem);
+						}
 					}
+				} catch (e) {
+					console.error(`[Zim Quick Launch] Error loading notebooks: ${e}`);
+					let errorItem = new PopupMenu.PopupMenuItem('Error loading notebooks');
+					this.menu.addMenuItem(errorItem);
 				}
-			} catch (e) {
-				console.error(`[Zim Quick Launch] Error loading notebooks: ${e}`);
-				let errorItem = new PopupMenu.PopupMenuItem('Error loading notebooks');
-				this.menu.addMenuItem(errorItem);
-			}
+			});
 		}
 
 		_processNotebookBlock(block, markNotebookFound) {
@@ -131,6 +135,10 @@ const ZimNotebooksIndicator = GObject.registerClass(
 
 		destroy() {
 			if (this._notebooksMonitor) {
+				if (this._notebooksMonitorId) {
+					this._notebooksMonitor.disconnect(this._notebooksMonitorId);
+					this._notebooksMonitorId = null;
+				}
 				this._notebooksMonitor.cancel();
 				this._notebooksMonitor = null;
 			}
