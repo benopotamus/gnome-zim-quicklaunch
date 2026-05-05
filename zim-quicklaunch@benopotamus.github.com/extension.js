@@ -46,11 +46,17 @@ const ZimNotebooksIndicator = GObject.registerClass(
 		}
 
 		_loadNotebooks() {
+			// Cancel any in-flight load (because async)
+			if (this._loadCancellable) {
+				this._loadCancellable.cancel();
+			}
+			this._loadCancellable = new Gio.Cancellable();
+
 			// Clear existing menu items
 			this.menu.removeAll();
 
 			let file = Gio.File.new_for_path(NOTEBOOKS_LIST_FILE);
-			file.load_contents_async(null, (source, result) => {
+			file.load_contents_async(this._loadCancellable, (source, result) => {
 				try {
 					let [success, contents] = source.load_contents_finish(result);
 					if (success) {
@@ -95,6 +101,8 @@ const ZimNotebooksIndicator = GObject.registerClass(
 						}
 					}
 				} catch (e) {
+					if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                		return; // Ignore cancellations
 					console.error(`[Zim Quick Launch] Error loading notebooks: ${e}`);
 					let errorItem = new PopupMenu.PopupMenuItem('Error loading notebooks');
 					this.menu.addMenuItem(errorItem);
@@ -134,6 +142,10 @@ const ZimNotebooksIndicator = GObject.registerClass(
 		}
 
 		destroy() {
+			if (this._loadCancellable) {
+				this._loadCancellable.cancel();
+				this._loadCancellable = null;
+			}
 			if (this._notebooksMonitor) {
 				if (this._notebooksMonitorId) {
 					this._notebooksMonitor.disconnect(this._notebooksMonitorId);
